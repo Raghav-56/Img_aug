@@ -43,25 +43,11 @@ class VideoAugmenter:
         os.makedirs(self.output_path, exist_ok=True)
 
         self.augmentation_methods = {
-            "crop_pad": self._get_crop_pad_augmenter,
-            "elastic": self._get_elastic_augmenter,
-            "scale": self._get_scale_augmenter,
-            "affine": self._get_piecewise_affine_augmenter,
-            "translate": self._get_translate_augmenter,
-            "hflip": self._get_horizontal_flip_augmenter,
-            "vflip": self._get_vertical_flip_augmenter,
             "rotate": self._get_rotate_augmenter,
-            "perspective": self._get_perspective_augmenter,
             "brightness": self._get_brightness_augmenter,
-            "contrast": self._get_contrast_augmenter,
             "dropout": self._get_coarse_dropout_augmenter,
-            "edge": self._get_edge_detection_augmenter,
             "motion_blur": self._get_motion_blur_augmenter,
-            "sharpen": self._get_sharpen_augmenter,
-            "emboss": self._get_emboss_augmenter,
-            "gaussian_blur": self._get_gaussian_blur_augmenter,
-            "hue_saturation": self._get_hue_saturation_augmenter,
-            "invert": self._get_invert_augmenter,
+            "perspective": self._get_perspective_augmenter,
             "noise": self._get_noise_augmenter,
         }
 
@@ -77,70 +63,25 @@ class VideoAugmenter:
         print(f"Found {len(self.video_paths)} videos to process")
         return len(self.video_paths) > 0
 
-    def _get_crop_pad_augmenter(self):
-        # Fixed parameters - no tuples or ranges that would create randomness
-        return iaa.CropAndPad(percent=-0.2, pad_mode="constant")
-
-    def _get_elastic_augmenter(self):
-        return iaa.ElasticTransformation(alpha=2.5, sigma=50.0)
-
-    def _get_scale_augmenter(self):
-        return iaa.Affine(scale=0.75)
-
-    def _get_piecewise_affine_augmenter(self):
-        return iaa.PiecewiseAffine(scale=0.07)
-
-    def _get_translate_augmenter(self):
-        # Fixed translation values
-        return iaa.Affine(translate_percent={"x": 0.2, "y": 0.2})
-
-    def _get_horizontal_flip_augmenter(self):
-        return iaa.Fliplr(1.0)
-
-    def _get_vertical_flip_augmenter(self):
-        return iaa.Flipud(1.0)
-
     def _get_rotate_augmenter(self):
         return iaa.Affine(rotate=30)
-
-    def _get_perspective_augmenter(self):
-        return iaa.Sequential(
-            [iaa.PerspectiveTransform(scale=0.15), iaa.Affine(shear=20)]
-        )
 
     def _get_brightness_augmenter(self):
         return iaa.MultiplyBrightness(1.5)
 
-    def _get_contrast_augmenter(self):
-        return iaa.LinearContrast(1.75)
-
     def _get_coarse_dropout_augmenter(self):
-        # Fixed dropout parameters
         return iaa.CoarseDropout(
             p=0.1,  # percentage of pixels to drop
             size_percent=0.2,  # size of the dropped areas
         )
 
-    def _get_edge_detection_augmenter(self):
-        return iaa.EdgeDetect(alpha=1.0)
-
     def _get_motion_blur_augmenter(self):
         return iaa.MotionBlur(k=15, angle=45)  # Fixed angle
 
-    def _get_sharpen_augmenter(self):
-        return iaa.Sharpen(alpha=0.8, lightness=1.0)
-
-    def _get_emboss_augmenter(self):
-        return iaa.Emboss(alpha=1.0, strength=1.5)
-
-    def _get_gaussian_blur_augmenter(self):
-        return iaa.GaussianBlur(sigma=3.0)
-
-    def _get_hue_saturation_augmenter(self):
-        return iaa.AddToHueAndSaturation(30)
-
-    def _get_invert_augmenter(self):
-        return iaa.Invert(1.0)
+    def _get_perspective_augmenter(self):
+        return iaa.Sequential(
+            [iaa.PerspectiveTransform(scale=0.15), iaa.Affine(shear=20)]
+        )
 
     def _get_noise_augmenter(self):
         return iaa.AdditiveGaussianNoise(scale=50)
