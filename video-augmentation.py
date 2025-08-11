@@ -1,15 +1,16 @@
-import cv2
-import os
-import numpy as np
-import time
 import concurrent.futures
-from tqdm import tqdm
+import os
+import sys
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
+
+import cv2
 import imgaug as ia
 import imgaug.augmenters as iaa
-from dataclasses import dataclass, field
+import numpy as np
 import pyrallis
-import sys
+from tqdm import tqdm
 
 
 @dataclass
@@ -27,6 +28,7 @@ class AugmentationConfig:
 
 
 class VideoAugmenter:
+
     def __init__(
         self,
         input_path="DIC/Samvedna_Sample/Sample_vid",
@@ -51,17 +53,39 @@ class VideoAugmenter:
             "noise": self._get_noise_augmenter,
         }
 
-    def _find_videos(self):
+    def iter_video_aug_tasks(self):
+        """(video_path, rel_path, video_name, video_suffix, aug_method, aug_idx, output_path)
+        for each video and augmentation method."""
         supported_formats = [".mp4", ".avi", ".mov", ".mkv"]
-        self.video_paths = []
-
+        video_count = 0
         for file_path in self.input_path.glob("**/*"):
             if file_path.is_file() and file_path.suffix.lower() in supported_formats:
                 rel_path = file_path.relative_to(self.input_path)
-                self.video_paths.append((file_path, rel_path))
-
-        print(f"Found {len(self.video_paths)} videos to process")
-        return len(self.video_paths) > 0
+                video_name = file_path.stem
+                video_suffix = file_path.suffix
+                for aug_idx, aug_method in enumerate(self.augmentation_methods.keys()):
+                    aug_dir = self.output_path / aug_method
+                    if self.preserve_structure:
+                        output_dir = aug_dir / rel_path.parent
+                    else:
+                        output_dir = aug_dir
+                    os.makedirs(output_dir, exist_ok=True)
+                    output_filename = (
+                        f"{video_name}_{aug_method}_{aug_idx}{video_suffix}"
+                    )
+                    output_path = output_dir / output_filename
+                    yield (
+                        file_path,
+                        rel_path,
+                        video_name,
+                        video_suffix,
+                        aug_method,
+                        aug_idx,
+                        output_path,
+                    )
+                video_count += 1
+        print(f"Found {video_count} videos to process")
+        return
 
     def _get_rotate_augmenter(self):
         return iaa.Affine(rotate=30)
@@ -91,28 +115,21 @@ class VideoAugmenter:
         augmented_frames = augmenter.augment_images(frames_array)
         return list(augmented_frames)
 
-    def _augment_video(self, video_info, aug_method, aug_idx):
-        video_path, rel_path = video_info
+    def _augment_video(
+        self,
+        video_path,
+        rel_path,
+        video_name,
+        video_suffix,
+        aug_method,
+        aug_idx,
+        output_path,
+    ):
         try:
-            # Set seed for reproducibility
             ia.seed(42 + hash(str(video_path) + aug_method) % 10000)
 
-            # Create the augmenter with fixed parameters
             base_augmenter = self.augmentation_methods[aug_method]()
-
-            # Make it deterministic - this ensures the SAME transformation
-            # is applied to every frame
             augmenter = base_augmenter.to_deterministic()
-
-            video_name = video_path.stem
-            output_filename = f"{video_name}_{aug_method}_{aug_idx}{video_path.suffix}"
-
-            if self.preserve_structure:
-                output_dir = self.output_path / rel_path.parent
-                os.makedirs(output_dir, exist_ok=True)
-                output_path = output_dir / output_filename
-            else:
-                output_path = self.output_path / output_filename
 
             cap = cv2.VideoCapture(str(video_path))
             if not cap.isOpened():
@@ -166,32 +183,22 @@ class VideoAugmenter:
             return False, None
 
     def run(self):
-        if not self._find_videos():
+        tasks = list(self.iter_video_aug_tasks())
+        if not tasks:
             print("No videos found in the input directory")
             return []
 
-        augmented_paths = []
-        augmentation_list = list(self.augmentation_methods.keys())
         print(
-            f"Applying all {len(augmentation_list)} augmentation methods to each video"
+            f"Applying all {len(self.augmentation_methods)} augmentation methods to each video"
         )
 
+        augmented_paths = []
         with concurrent.futures.ProcessPoolExecutor() as executor:
-            futures = []
-
-            for video_info in self.video_paths:
-                for aug_idx, aug_method in enumerate(augmentation_list):
-                    futures.append(
-                        executor.submit(
-                            self._augment_video, video_info, aug_method, aug_idx
-                        )
-                    )
-
+            futures = [executor.submit(self._augment_video, *task) for task in tasks]
             for future in concurrent.futures.as_completed(futures):
                 success, output_path = future.result()
                 if success and output_path:
                     augmented_paths.append(output_path)
-
         return augmented_paths
 
 
